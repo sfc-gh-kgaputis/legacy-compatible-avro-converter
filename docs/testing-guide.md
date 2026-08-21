@@ -64,10 +64,10 @@ to expect.
 | # | Assumption | If it does not hold |
 |---|---|---|
 | 4 | **`snowflake.enable.schematization=false`** | This is the only tested configuration. With schematization enabled, column mapping and schema evolution behavior are untested |
-| 5 | **Confluent Schema Registry**, standard wire format: magic byte `0x00` + 4-byte schema ID | If your v3 setup used `SnowflakeAvroConverterWithoutSchemaRegistry`, or a non-Confluent registry such as AWS Glue or Apicurio, **this converter does not apply** |
+| 5 | **Confluent Schema Registry**, standard wire format: magic byte `0x00` + 4-byte schema ID | A Schema Registry is **required** — Confluent's converter raises `ConfigException` without `schema.registry.url`, and this converter inherits that. If your v3 setup used `SnowflakeAvroConverterWithoutSchemaRegistry`, or a non-Confluent registry such as AWS Glue or Apicurio, **this converter does not apply**. See [confluent-compatibility.md](confluent-compatibility.md) |
 | 6 | The v3 connector did **not** set the `reader.schema` property | This converter resolves the *writer* schema by ID. Reader-side defaults and field aliasing are not reproduced, and additional resolution logic would be needed |
 | 7 | Applied as `value.converter` only | The key converter is untouched. `fromConnectData` delegates to a standard `AvroConverter`; this converter is sink-focused |
-| 8 | `avro.use.logical.type.converters` is **not** set in your connector config | The converter forces it to `false` internally to keep temporal fields as raw epoch values. Setting it yourself has no effect |
+| 8 | `avro.use.logical.type.converters` and `specific.avro.reader` are **not** relied upon | Both are forced to `false` internally; your values are ignored. Enabling logical type converters produces values Kafka Connector 4.1.0 rejects outright, so this is a hard requirement rather than a preference. See [confluent-compatibility.md](confluent-compatibility.md) |
 | 9 | Any SMTs you configure are safe to run **after** conversion | SMTs see the already-collapsed value |
 
 ### Data and representation

@@ -95,9 +95,47 @@ final class AvroTestSupport {
     return toKcRecordContent(converter, payload);
   }
 
+  /**
+   * Serializes under an arbitrary Schema Registry subject. Lets tests assert that the read path
+   * resolves by schema ID from the payload, independent of any subject naming strategy.
+   */
+  byte[] serializeUnderSubject(String subject, Schema schema, Object datum) throws Exception {
+    return frame(registry.register(subject, schema), schema, datum);
+  }
+
+  /**
+   * Builds a compatibility converter with additional or overriding configuration, so tests can
+   * assert how it behaves under the full Confluent AvroConverter config surface.
+   */
+  Converter compatConverterWith(Map<String, Object> extra) {
+    Map<String, Object> config = new HashMap<>();
+    config.put("schema.registry.url", REGISTRY_URL);
+    config.putAll(extra);
+    LegacyCompatibleAvroConverter conv = new LegacyCompatibleAvroConverter(registry);
+    conv.configure(config, false);
+    return conv;
+  }
+
+  /** Applies a converter's header-aware overload and returns KC RECORD_CONTENT. */
+  JsonNode recordContentViaHeaders(Converter converter, byte[] payload) {
+    SchemaAndValue converted =
+        converter.toConnectData(TOPIC, new org.apache.kafka.common.header.internals.RecordHeaders(), payload);
+    SinkRecord sinkRecord =
+        new SinkRecord(TOPIC, 0, null, null, converted.schema(), converted.value(), 0L);
+    SnowflakeSinkRecord snowflakeRecord =
+        SnowflakeSinkRecord.from(sinkRecord, new SnowflakeMetadataConfig(), false, false);
+    if (!snowflakeRecord.isValid()) {
+      throw new AssertionError("KC rejected converted record", snowflakeRecord.getBrokenReason());
+    }
+    return objectMapper.valueToTree(snowflakeRecord.getContent().get("RECORD_CONTENT"));
+  }
+
   /** Serializes datum to Confluent wire format: magic byte 0x00 + 4-byte schema ID + Avro binary. */
   byte[] serialize(Schema schema, Object datum) throws Exception {
-    int schemaId = registry.register(TOPIC + "-value", schema);
+    return frame(registry.register(TOPIC + "-value", schema), schema, datum);
+  }
+
+  private byte[] frame(int schemaId, Schema schema, Object datum) throws Exception {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(output, null);
     new GenericDatumWriter<Object>(schema).write(datum, encoder);

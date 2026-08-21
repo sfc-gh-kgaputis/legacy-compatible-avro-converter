@@ -39,8 +39,18 @@ value.converter.schema.registry.url=https://your-schema-registry:8081
 snowflake.enable.schematization=false
 ```
 
-Read [docs/testing-guide.md](docs/testing-guide.md) first — it lists 16 assumptions that decide
-whether this converter applies to your setup at all.
+### Scope
+
+This is a **drop-in replacement for `io.confluent.connect.avro.AvroConverter`**. It assumes you can
+already use the Confluent converter and are simply not getting the legacy representation from it.
+It does not reproduce the removed `SnowflakeAvroConverter` family — notably, **Avro without a
+Schema Registry is not supported**, because Confluent's converter has no registry-less mode either.
+
+Two settings are deliberately overridden and two are inert. See
+[docs/confluent-compatibility.md](docs/confluent-compatibility.md) for the full support matrix.
+
+Read [docs/testing-guide.md](docs/testing-guide.md) before deploying — it lists 16 assumptions that
+decide whether this converter applies to your setup at all.
 
 ## Maven
 
@@ -186,11 +196,13 @@ src/test/java/com.snowflake.labs.kafka.converter/
   AvroTestSupport.java                 — mock registry, three-path comparison harness
   AvroCompatibilityTest.java           — executable compatibility contract
   NamedRecordUnionCompatibilityTest.java — union-of-named-records contract
+  ConfluentConverterCompatibilityTest.java — Confluent AvroConverter config-surface parity
   LegacyAvroValueMapperTest.java       — unit tests for the value mapper
 
 src/assembly/plugin-zip.xml           — assembly descriptor for deployment ZIP
 
 docs/
+  confluent-compatibility.md          — support matrix vs Confluent AvroConverter
   legacy_avro_converter_analysis.md   — behavior analysis and migration impact
   deployment-guide.md                 — production deployment, Strimzi ARM64, version matrix
 ```

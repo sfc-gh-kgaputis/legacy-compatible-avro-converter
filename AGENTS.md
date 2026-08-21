@@ -53,3 +53,16 @@ See `README.md` for build/test commands and `docs/deployment-guide.md` for deplo
 - Do not edit or commit `target/`.
 - Never commit credentials, Schema Registry secrets, KC connection properties, or
   unsanitized customer payloads. Private fixtures go in `fixtures/private/` (git-ignored).
+
+## Compatibility contract
+
+The target is parity with `io.confluent.connect.avro.AvroConverter`, not with the removed
+`SnowflakeAvroConverter` family. Anything Confluent accepts, this should accept, because the whole
+config map is forwarded to `KafkaAvroDeserializer`; only the Avro-to-Connect mapping is replaced.
+
+A Schema Registry is required and registry-less Avro is out of scope — Confluent's converter has no
+such mode either. Two settings are forced (`specific.avro.reader`,
+`avro.use.logical.type.converters`) and two are inert (`enhanced.avro.schema.support`,
+`connect.meta.data`). Before changing either forcing, note that enabling logical type converters
+yields values KC 4.1.0 rejects. See `docs/confluent-compatibility.md`, and keep it in step with
+`ConfluentConverterCompatibilityTest`.
