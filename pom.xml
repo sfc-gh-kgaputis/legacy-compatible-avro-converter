@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.snowflake.labs</groupId>
+    <artifactId>legacy-compatible-avro-converter</artifactId>
+    <version>1.0.0</version>
+
+    <name>Legacy Compatible Avro Converter</name>
+    <description>Legacy-compatible Avro converter for Kafka Connector 4.x/SSv2 and behavior investigation harness.</description>
+
+    <properties>
+        <maven.compiler.release>11</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!--
+          Tested version baseline. Versions can be overridden individually at the command line:
+            mvn test -Dkc.version=4.2.0 -Dconfluent.version=7.10.0
+
+          Named profiles below (kc-4.1) pin known-good combinations and document the tested matrix.
+        -->
+        <confluent.version>7.9.2</confluent.version>
+        <kafka.version>3.9.2</kafka.version>
+        <kc.version>4.1.0</kc.version>
+        <junit.version>5.14.4</junit.version>
+    </properties>
+
+    <repositories>
+        <repository>
+            <id>confluent</id>
+            <url>https://packages.confluent.io/maven/</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <!--
+          Production compile classpath: public Kafka Connect API and Confluent Avro converter API.
+
+          Both are provided by the Kafka Connect worker at runtime — do not bundle them in the
+          converter JAR. The `provided` scope makes them available for compilation and tests
+          without including them in the packaged artifact.
+
+          Avro, Confluent Schema Registry client, and Jackson are transitively available
+          through kafka-connect-avro-converter.
+        -->
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>connect-api</artifactId>
+            <version>${kafka.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.confluent</groupId>
+            <artifactId>kafka-connect-avro-converter</artifactId>
+            <version>${confluent.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!--
+          Test-only: KC oracle (shaded fat-jar ~171 MB), JUnit, and logging.
+          Production code must compile without any Snowflake KC import on the classpath;
+          the move to test scope enforces that boundary.
+        -->
+        <dependency>
+            <groupId>com.snowflake</groupId>
+            <artifactId>snowflake-kafka-connector</artifactId>
+            <version>${kc.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>2.0.18</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.14.1</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.5</version>
+            </plugin>
+            <!--
+              Embeds build metadata into the manifest. The Converter-Class entry documents
+              which class to reference in connector configuration.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                        </manifest>
+                        <manifestEntries>
+                            <Converter-Class>com.snowflake.labs.kafka.converter.LegacyCompatibleAvroConverter</Converter-Class>
+                            <KC-Tested-Version>${kc.version}</KC-Tested-Version>
+                            <Confluent-Tested-Version>${confluent.version}</Confluent-Tested-Version>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!--
+      Version matrix profiles. Each profile pins a known-tested combination of KC, Confluent,
+      and Kafka versions. The default (kc-4.1) matches the properties above.
+
+      Examples:
+        mvn test                              # kc-4.1 default
+        mvn test -P kc-4.1                    # explicit kc-4.1 baseline
+        mvn test -Dkc.version=4.2.0 -Dconfluent.version=7.10.0   # ad-hoc override
+        mvn package -P plugin-zip             # produce deployment zip
+    -->
+    <profiles>
+        <profile>
+            <!-- Baseline: KC 4.1.0, Confluent 7.9.2, Kafka 3.9.2, Java 11 -->
+            <id>kc-4.1</id>
+            <activation><activeByDefault>true</activeByDefault></activation>
+            <properties>
+                <kc.version>4.1.0</kc.version>
+                <confluent.version>7.9.2</confluent.version>
+                <kafka.version>3.9.2</kafka.version>
+            </properties>
+        </profile>
+
+        <!--
+          Produces a thin plugin ZIP for drop-in Strimzi/KafkaConnect deployment.
+          The ZIP contains only the converter JAR; deploy it alongside the existing Confluent
+          and KC plugin directories rather than creating a separate plugin directory.
+          See docs/deployment-guide.md for full instructions.
+
+          Usage: mvn package -P plugin-zip
+          Output: target/legacy-compatible-avro-converter-1.0.0.zip
+        -->
+        <profile>
+            <id>plugin-zip</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-assembly-plugin</artifactId>
+                        <version>3.7.1</version>
+                        <executions>
+                            <execution>
+                                <id>plugin-zip</id>
+                                <phase>package</phase>
+                                <goals><goal>single</goal></goals>
+                                <configuration>
+                                    <descriptors>
+                                        <descriptor>src/assembly/plugin-zip.xml</descriptor>
+                                    </descriptors>
+                                    <finalName>legacy-compatible-avro-converter-${project.version}</finalName>
+                                    <appendAssemblyId>false</appendAssemblyId>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

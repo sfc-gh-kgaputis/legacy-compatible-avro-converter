@@ -1,0 +1,29 @@
+<assembly xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.3"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.3
+            https://maven.apache.org/xsd/assembly-1.1.3.xsd">
+  <!--
+    Thin plugin ZIP for Strimzi / standalone Kafka Connect deployment.
+
+    Contents: the converter JAR only. All Confluent, Avro, and Kafka Connect API classes
+    come from the co-located Confluent and Snowflake KC plugin directories and must NOT
+    be duplicated here. See docs/deployment-guide.md for full plugin directory layout.
+
+    Activate with: mvn package -P plugin-zip
+  -->
+  <id>plugin-zip</id>
+  <formats>
+    <format>zip</format>
+  </formats>
+  <includeBaseDirectory>false</includeBaseDirectory>
+
+  <fileSets>
+    <fileSet>
+      <directory>${project.build.directory}</directory>
+      <outputDirectory>/</outputDirectory>
+      <includes>
+        <include>${project.artifactId}-${project.version}.jar</include>
+      </includes>
+    </fileSet>
+  </fileSets>
+</assembly>

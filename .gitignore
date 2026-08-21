@@ -1,0 +1,5 @@
+target/
+fixtures/private/
+
+# Customer handoff bundle (regenerable build output)
+dist/
