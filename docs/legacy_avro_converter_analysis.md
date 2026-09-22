@@ -118,6 +118,11 @@ Confluent 7.9.2 does not wrap a simple two-branch nullable union and does not fl
 nested record. Path breakage is reproduced with a genuine multi-type union, where the legacy path
 `RECORD_CONTENT:value` becomes `RECORD_CONTENT:value:string`.
 
+The compatibility converter's direct parity with the legacy JSON path across a wider Avro corpus is
+documented in [legacy-json-parity.md](legacy-json-parity.md). That pass includes plain bytes/fixed,
+numeric boundaries, non-finite values, escaping, populated containers, recursive records, the full
+standard temporal logical-type family, decimals, and reader defaults.
+
 ## Behavior differences in detail
 
 ### Simple nullable unions

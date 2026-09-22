@@ -27,7 +27,10 @@ Key differences from using the standard `AvroConverter` directly:
 | Union of named records (e.g. an event `action`) | One key per branch name; inactive branches null; active branch nested one level deeper | Active branch's fields inlined at the union's path; no branch-name key |
 | Date logical type | ISO string: `"1970-01-01T00:00:00Z"` | Integer days from epoch: `0` |
 | Timestamp-millis | ISO string | Integer epoch milliseconds |
-| Decimal | JSON number (identical) | JSON number |
+| Decimal | JSON number, with historical Jackson precision limits | Matching JSON number and precision limit |
+| Plain bytes | ISO-8859-1-decoded JSON string | Matching JSON string |
+| Plain fixed | Array of signed byte integers | Matching integer array |
+| NaN and infinities | Quoted JSON strings | Matching quoted strings |
 | Tombstone (null record) | KC tombstone | KC tombstone (preserved) |
 
 The union-of-named-records row is the case that breaks path-based downstream SQL: with the

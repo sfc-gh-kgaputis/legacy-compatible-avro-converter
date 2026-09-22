@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -143,12 +144,12 @@ class LegacyAvroValueMapperTest {
   }
 
   @Test
-  void plainBytesReturnsByteArray() {
+  void plainBytesReturnsLegacyIso88591String() {
     Schema schema = Schema.create(Schema.Type.BYTES);
-    byte[] bytes = {1, 2, 3, 4};
+    byte[] bytes = {1, 2, 3, 4, (byte) 0xFF};
     Object result = LegacyAvroValueMapper.toValue(schema, ByteBuffer.wrap(bytes));
-    assertInstanceOf(byte[].class, result);
-    assertArrayEquals(bytes, (byte[]) result);
+    assertInstanceOf(String.class, result);
+    assertEquals(StandardCharsets.ISO_8859_1.decode(ByteBuffer.wrap(bytes)).toString(), result);
   }
 
   @Test
@@ -162,12 +163,20 @@ class LegacyAvroValueMapperTest {
   }
 
   @Test
-  void plainFixedReturnsByteArray() {
+  void plainFixedReturnsLegacySignedByteArray() {
     Schema schema = Schema.createFixed("F", null, null, 4);
-    byte[] raw = {10, 20, 30, 40};
+    byte[] raw = {10, 20, -30, -1};
     Object result = LegacyAvroValueMapper.toValue(schema, new GenericData.Fixed(schema, raw));
-    assertInstanceOf(byte[].class, result);
-    assertArrayEquals(raw, (byte[]) result);
+    assertEquals(List.of(10, 20, -30, -1), result);
+  }
+
+  @Test
+  void nonFiniteFloatAndDoubleRenderAsLegacyJsonStrings() {
+    assertEquals("NaN", LegacyAvroValueMapper.toValue(Schema.create(Schema.Type.FLOAT), Float.NaN));
+    assertEquals("Infinity",
+        LegacyAvroValueMapper.toValue(Schema.create(Schema.Type.DOUBLE), Double.POSITIVE_INFINITY));
+    assertEquals("-Infinity",
+        LegacyAvroValueMapper.toValue(Schema.create(Schema.Type.DOUBLE), Double.NEGATIVE_INFINITY));
   }
 
   // ------------------------------------------------------------------

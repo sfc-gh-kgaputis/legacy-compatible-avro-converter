@@ -77,20 +77,25 @@ to expect.
 | 10 | An Avro union holds exactly one branch value | Guaranteed by Avro itself, so the collapse is always well-defined. The 45 nulls you see today are an artifact of the Connect representation, not of your data |
 | 11 | A union that includes `null` and holds `null` should stay `null` | Handled: `action` becomes `null` and the record is retained, not dropped |
 | 12 | Temporal logical types (date, time, timestamp) arrive as **raw epoch integers/longs** | This matches legacy v3 behavior. If any downstream consumer expects ISO-8601 strings, it will see numbers instead |
-| 13 | **Decimal** logical types (`bytes`/`fixed`) become JSON numbers via `double` | ⚠️ Values needing more than ~15 significant digits **lose precision**. Please check whether your schemas use decimal logical types — this is the sharpest limitation |
+| 13 | **Decimal** logical types (`bytes`/`fixed`) become JSON numbers via `double` | Values needing more than ~15 significant digits lose precision. The wide parity corpus confirms the original converter's final Jackson JSON had the same loss for a tested 30-digit value |
 | 14 | Enums render as the symbol string; UUID logical type renders as a string | Matches legacy |
 | 15 | Tombstones (null Kafka value) pass through as a null record | Preserved for v4 offset handling |
 | 16 | JSON **key order** is not preserved end to end | Snowflake normalizes VARIANT object keys alphabetically regardless of converter. Compare by path, not by JSON text |
 
-### Not covered by testing
+### Coverage limits
 
-- **Nested unions** below the collapsed path. The mapping is recursive and is expected to handle them; add a fixture from your own schema to confirm.
 - **Your specific branch shapes.** The test suite exercises a 46-branch union with three distinct branch field lists. The collapse does not depend on branch count or shape, but branch-specific surprises cannot be ruled out without your schema.
-- **Populated arrays and maps.** The reference fixtures use empty arrays for the container fields.
 - **Error handling policy.** Conversion failures throw `DataException`; standard Connect `errors.tolerance` and dead-letter-queue settings apply, but were not exercised.
 - **Kubernetes / Strimzi.** Validated under Docker Compose on ARM64, not on a Strimzi cluster.
 - **Throughput and latency.** Correctness only; no performance measurement.
 - **Offset migration and cutover.** Not rehearsed. See your migration runbook.
+- **Custom logical types.** Unregistered custom types follow their underlying Avro type; add an
+  explicit fixture for any custom conversion you depend on.
+
+The executable wide-range matrix covers primitives and numeric boundaries, non-finite numbers,
+escaping, plain bytes and fixed, populated arrays/maps, nested containers, finite recursive values,
+union placement, the standard temporal logical-type family, decimal bytes/fixed, and binary reader
+defaults. See [legacy-json-parity.md](legacy-json-parity.md).
 
 ---
 

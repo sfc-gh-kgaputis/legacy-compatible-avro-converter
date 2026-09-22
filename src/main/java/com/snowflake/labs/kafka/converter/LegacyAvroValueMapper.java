@@ -3,6 +3,7 @@ package com.snowflake.labs.kafka.converter;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -35,7 +36,7 @@ public final class LegacyAvroValueMapper {
      *
      * @param schema the Avro schema of the datum (may be null for top-level non-record datums)
      * @param datum  the Avro datum to convert
-     * @return a Java Map, List, String, Number, BigDecimal, byte[], Boolean, or null
+     * @return a Java Map, List, String, Number, Boolean, or null
      */
     public static Object toValue(Schema schema, Object datum) {
         if (datum == null) {
@@ -64,6 +65,11 @@ public final class LegacyAvroValueMapper {
             case LONG:
             case FLOAT:
             case DOUBLE:
+                if (datum instanceof Float && !Float.isFinite((Float) datum)
+                        || datum instanceof Double && !Double.isFinite((Double) datum)) {
+                    return datum.toString();
+                }
+                return datum;
             case BOOLEAN:
                 // Raw numeric and boolean values pass through unchanged.
                 // Temporal logical types (date, time, timestamp) intentionally stay as raw
@@ -130,9 +136,8 @@ public final class LegacyAvroValueMapper {
         }
         if (datum instanceof ByteBuffer) {
             ByteBuffer buf = ((ByteBuffer) datum).duplicate();
-            byte[] bytes = new byte[buf.remaining()];
-            buf.get(bytes);
-            return bytes;
+            // GenericData.toString renders plain bytes as an escaped ISO-8859-1 JSON string.
+            return StandardCharsets.ISO_8859_1.decode(buf).toString();
         }
         return datum;
     }
@@ -146,7 +151,12 @@ public final class LegacyAvroValueMapper {
             return new BigDecimal(new BigInteger(bytes), decimal.getScale()).doubleValue();
         }
         if (datum instanceof GenericData.Fixed) {
-            return ((GenericData.Fixed) datum).bytes();
+            // GenericData.Fixed.toString renders Arrays.toString(byte[]), a signed integer array.
+            List<Integer> bytes = new ArrayList<>();
+            for (byte value : ((GenericData.Fixed) datum).bytes()) {
+                bytes.add((int) value);
+            }
+            return bytes;
         }
         return datum;
     }

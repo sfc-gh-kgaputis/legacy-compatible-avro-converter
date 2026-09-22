@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.EncoderFactory;
 import org.apache.kafka.connect.data.SchemaAndValue;
@@ -64,6 +65,18 @@ final class AvroTestSupport {
   JsonNode decodeLegacyWithReaderSchema(Schema writerSchema, Schema readerSchema, Object datum)
       throws Exception {
     return legacyDecoder.decode(serialize(writerSchema, datum), readerSchema);
+  }
+
+  JsonNode decodeLegacy(Schema schema, Object datum) throws Exception {
+    return legacyDecoder.decode(serialize(schema, datum));
+  }
+
+  GenericRecord decodeLegacyDatum(Schema schema, Object datum) throws Exception {
+    return legacyDecoder.decodeDatum(serialize(schema, datum), null);
+  }
+
+  JsonNode recordContent(Schema schema, Object datum) throws Exception {
+    return recordContent(tryCreateCompatConverter().orElseThrow(), serialize(schema, datum));
   }
 
   JsonNode recordContentWithReaderSchema(

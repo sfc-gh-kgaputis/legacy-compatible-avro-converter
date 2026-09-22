@@ -192,6 +192,8 @@ coordinates and are not claimed as tested.
   Confluent's public deserializer API.
 - Validates the configured reader schema during converter startup and reports incompatible records
   as topic-specific `DataException`s with the Avro failure retained as the cause.
+- Reproduces legacy JSON rendering for plain `bytes`, plain `fixed`, and non-finite floating-point
+  values, backed by a wide differential corpus.
 - Keeps tombstones, outbound serialization, legacy union collapse, and logical-type representation
   unchanged.
 
@@ -216,7 +218,9 @@ system (`Struct`/`SchemaAndValue`). This preserves:
 - all ordinary record nesting and explicit nulls.
 
 See [`docs/legacy_avro_converter_analysis.md`](docs/legacy_avro_converter_analysis.md)
-for the full behavior analysis and
+for the migration analysis,
+[`docs/legacy-json-parity.md`](docs/legacy-json-parity.md) for the wide-range executable output
+comparison, and
 [`docs/deployment-guide.md`](docs/deployment-guide.md) for deployment instructions.
 
 ---
@@ -234,6 +238,7 @@ src/test/java/com.snowflake.labs.kafka.converter/
   AvroCompatibilityTest.java           — executable compatibility contract
   NamedRecordUnionCompatibilityTest.java — union-of-named-records contract
   ConfluentConverterCompatibilityTest.java — Confluent AvroConverter config-surface parity
+  LegacyJsonParityTest.java               — wide legacy JSON differential corpus
   LegacyAvroValueMapperTest.java       — unit tests for the value mapper
 
 src/assembly/plugin-zip.xml           — assembly descriptor for deployment ZIP
@@ -241,6 +246,7 @@ src/assembly/plugin-zip.xml           — assembly descriptor for deployment ZIP
 docs/
   confluent-compatibility.md          — support matrix vs Confluent AvroConverter
   legacy_avro_converter_analysis.md   — behavior analysis and migration impact
+  legacy-json-parity.md               — confirmed parity, differences, and coverage limits
   deployment-guide.md                 — production deployment, Strimzi ARM64, version matrix
 ```
 

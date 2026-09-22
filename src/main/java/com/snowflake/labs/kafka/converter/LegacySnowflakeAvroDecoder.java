@@ -10,6 +10,7 @@ import org.apache.avro.Conversions;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 
@@ -29,6 +30,11 @@ public final class LegacySnowflakeAvroDecoder {
   }
 
   public JsonNode decode(byte[] payload, Schema readerSchema) throws IOException {
+    GenericRecord datum = decodeDatum(payload, readerSchema);
+    return objectMapper.readTree(datum.toString());
+  }
+
+  GenericRecord decodeDatum(byte[] payload, Schema readerSchema) throws IOException {
     ByteBuffer buffer = ByteBuffer.wrap(payload);
     if (buffer.remaining() < 5 || buffer.get() != CONFLUENT_MAGIC_BYTE) {
       throw new IOException("Payload is not in Confluent Avro wire format");
@@ -52,7 +58,6 @@ public final class LegacySnowflakeAvroDecoder {
             writerSchema, readerSchema == null ? writerSchema : readerSchema, genericData);
     Decoder decoder =
         DecoderFactory.get().binaryDecoder(new ByteArrayInputStream(avroData), null);
-    Object datum = reader.read(null, decoder);
-    return objectMapper.readTree(datum.toString());
+    return (GenericRecord) reader.read(null, decoder);
   }
 }
