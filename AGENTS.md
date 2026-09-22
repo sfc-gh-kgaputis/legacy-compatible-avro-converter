@@ -57,8 +57,10 @@ See `README.md` for build/test commands and `docs/deployment-guide.md` for deplo
 ## Compatibility contract
 
 The target is parity with `io.confluent.connect.avro.AvroConverter`, not with the removed
-`SnowflakeAvroConverter` family. Anything Confluent accepts, this should accept, because the whole
-config map is forwarded to `KafkaAvroDeserializer`; only the Avro-to-Connect mapping is replaced.
+`SnowflakeAvroConverter` family. Anything Confluent accepts, this should accept, because its config
+map is forwarded to `KafkaAvroDeserializer`; only the Avro-to-Connect mapping is replaced. The one
+converter extension is `reader.schema`, which is parsed locally and supplied through Confluent's
+public reader-schema overload.
 
 A Schema Registry is required and registry-less Avro is out of scope — Confluent's converter has no
 such mode either. Two settings are forced (`specific.avro.reader`,

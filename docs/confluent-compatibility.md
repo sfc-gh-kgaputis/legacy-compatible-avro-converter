@@ -2,8 +2,14 @@
 
 The design goal is that `LegacyCompatibleAvroConverter` is a **drop-in replacement for
 `io.confluent.connect.avro.AvroConverter`**: anything Confluent's converter accepts, this one
-accepts, because the entire configuration map is handed to Confluent's `KafkaAvroDeserializer`.
-Only the Avro-to-Connect *mapping* step is replaced.
+accepts, because its configuration map is handed to Confluent's `KafkaAvroDeserializer`. Only the
+Avro-to-Connect *mapping* step is replaced. The one local extension is `reader.schema`, which is
+parsed before the remaining settings are forwarded.
+
+Version 1.1.0 also accepts the legacy connector-specific `reader.schema` property. It is parsed by
+this converter and passed to Confluent's public reader-schema deserialization overload, so registry
+lookup, rules, migrations, caching, auth, and TLS remain in Confluent's implementation while Avro
+performs normal writer-to-reader resolution.
 
 This document states where that holds, where it deliberately does not, and what is out of scope.
 
@@ -21,6 +27,7 @@ reproduce every capability of the removed `SnowflakeAvroConverter` family.
 | **`schema.reflection=true`** | Produces reflective POJOs rather than `GenericRecord`, which the mapper needs. Untested; assume broken. |
 | **`specific.avro.key.type` / `specific.avro.value.type`** | Specific reading is forced off (below), so these have no effect. |
 | **Source-side use** | `fromConnectData` delegates to a stock `AvroConverter`. This converter is sink-focused and the outbound path is not independently tested. |
+| **Dynamic or subject-selected reader schemas** | `reader.schema` is one fixed schema per configured converter instance. Per-record lookup, subject discovery, and registry-hosted reader selection are out of scope. |
 
 If you need Avro without a Schema Registry, you need a different approach entirely — not this
 converter with different settings.
@@ -62,6 +69,20 @@ Confluent 7.9.2) is forwarded untouched. Grouped:
 | Subject naming | `value.subject.name.strategy`, `key.subject.name.strategy`, `context.name.strategy` |
 | Data contracts | `rule.executors`, `rule.actions`, `rule.service.loader.enable`, `propagate.schema.tags` |
 
+## Fixed reader schema
+
+`reader.schema` is an extension matching the legacy Snowflake converter's property name rather than
+a stock `AvroConverter` setting. The value must be a string containing one Avro schema. It is parsed
+once during `configure`; invalid text and non-string values raise `ConfigException` before records
+are consumed.
+
+For each non-null payload, Confluent still obtains the writer schema from the wire-format schema ID.
+The configured schema is supplied as the reader schema, and the returned `GenericRecord` carries
+that resolved schema into `LegacyAvroValueMapper`. This supports reader defaults, aliases,
+projection, compatible numeric promotion, and named-type resolution as implemented by the tested
+Avro dependency. Incompatible schemas raise a topic-specific `DataException` retaining the original
+Avro failure in the cause chain. Tombstones bypass resolution.
+
 ### A note on subject naming strategies
 
 They are accepted, and they make no difference on the read path. The 4-byte schema ID in the
@@ -90,3 +111,5 @@ deserializer, and would reproduce with the stock converter too.
 - `avro.use.logical.type.converters=true` being overridden
 - `enhanced.avro.schema.support` and `connect.meta.data` being inert
 - A representative slice of pass-through settings being accepted without altering output
+- Fixed reader-schema defaults, aliases, projection, numeric promotion, configuration validation,
+  incompatible schemas, tombstones, both overloads, multiple writer IDs, and concurrency

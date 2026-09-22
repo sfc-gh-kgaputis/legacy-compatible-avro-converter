@@ -30,7 +30,7 @@ from the Snowflake connector's own fat JAR, which bundles them unrelocated. A se
 ```
 /opt/kafka/plugins/snowflake-kafka-connector/
     snowflake-kafka-connector-4.1.0.jar
-    legacy-compatible-avro-converter-1.0.0.jar   <-- here
+    legacy-compatible-avro-converter-1.1.0.jar   <-- here
 ```
 
 ```properties
@@ -38,6 +38,20 @@ value.converter=com.snowflake.labs.kafka.converter.LegacyCompatibleAvroConverter
 value.converter.schema.registry.url=https://your-schema-registry:8081
 snowflake.enable.schematization=false
 ```
+
+To apply one fixed Avro reader schema to every value handled by the converter, add its JSON schema
+as a string-valued converter property:
+
+```properties
+value.converter.reader.schema={"type":"record","name":"Event","namespace":"com.example","fields":[{"name":"id","type":"string"},{"name":"source","type":"string","default":"legacy"}]}
+```
+
+The schema is parsed once when the converter is configured. Invalid schema text and non-string
+values fail startup with `ConfigException`. Compatible writer schemas are resolved through Avro's
+normal writer-to-reader rules, including defaults, aliases, field projection, and numeric promotion.
+An incompatible payload fails as `DataException`; the converter never falls back to writer-only
+decoding. The setting is fixed per converter instance, not selected per record or Schema Registry
+subject.
 
 ### Scope
 
@@ -67,7 +81,7 @@ Releases are published to a static Maven repository inside this repo.
 <dependency>
   <groupId>com.snowflake.labs</groupId>
   <artifactId>legacy-compatible-avro-converter</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 ```
 
@@ -117,7 +131,7 @@ Produces the thin converter JAR in `target/`.
 mvn package -P plugin-zip
 ```
 
-Produces a deployment ZIP (`target/legacy-compatible-avro-converter-1.0.0.zip`)
+Produces a deployment ZIP (`target/legacy-compatible-avro-converter-1.1.0.zip`)
 for drop-in placement in an existing KC plugin directory.
 
 ```
@@ -140,8 +154,12 @@ Inspect the resolved dependency tree and check for version conflicts.
 Override versions at build time:
 
 ```
-mvn test -Dkc.version=4.2.0 -Dconfluent.version=7.10.0
+mvn test -Dkc.version=4.1.0 -Dconfluent.version=7.9.10
 ```
+
+The release verification matrix includes the 4.1.0 / 7.9.2 baseline and a Confluent 7.9.10
+override. Kafka Connector 4.2.0 and Confluent 7.10.0 are not published under those artifact
+coordinates and are not claimed as tested.
 
 ---
 
@@ -161,6 +179,25 @@ mvn test -Dkc.version=4.2.0 -Dconfluent.version=7.10.0
 - Tombstone records (null payloads).
 - Concurrency: a single converter instance is safe under multi-threaded Kafka Connect
   worker usage.
+- Fixed `reader.schema` resolution: defaults, aliases, projection, numeric promotion, incompatible
+  schema failures, multiple writer IDs, both converter overloads, and concurrent use.
+
+---
+
+## Release notes
+
+### 1.1.0
+
+- Adds the legacy fixed `reader.schema` option with Avro writer-to-reader resolution delegated to
+  Confluent's public deserializer API.
+- Validates the configured reader schema during converter startup and reports incompatible records
+  as topic-specific `DataException`s with the Avro failure retained as the cause.
+- Keeps tombstones, outbound serialization, legacy union collapse, and logical-type representation
+  unchanged.
+
+### 1.0.0
+
+- Initial public release preserving the legacy schema-less `RECORD_CONTENT` representation.
 
 ---
 

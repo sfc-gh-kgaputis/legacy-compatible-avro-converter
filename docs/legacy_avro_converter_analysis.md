@@ -189,8 +189,10 @@ That could:
 - insert reader-schema defaults for fields missing from the writer schema.
 
 The normal Confluent converter configuration used by KC 4.1.0 does not consume the legacy inline
-`reader.schema` setting. The test suite shows a reader-only field with a default appearing in the legacy
-result but not in the normal current result.
+`reader.schema` setting. Version 1.1.0 of this compatibility converter parses that property itself
+and calls Confluent's public reader-schema deserialization overload. The test suite shows defaults,
+aliases, projection, and numeric promotion in the compatibility result while preserving Confluent's
+Schema Registry and wire-format machinery.
 
 This is another reason a field may appear null or absent after migration: the field may previously
 have been materialized by reader-schema resolution rather than being present in the writer payload.

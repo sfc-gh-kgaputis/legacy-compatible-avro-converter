@@ -1,6 +1,6 @@
 # Legacy Compatible Avro Converter — Testing Guide
 
-**Version 1.0.0** · Kafka Connect converter for migrating from Kafka Connector v3 to v4 without
+**Version 1.1.0** · Kafka Connect converter for migrating from Kafka Connector v3 to v4 without
 changing downstream SQL.
 
 ---
@@ -65,7 +65,7 @@ to expect.
 |---|---|---|
 | 4 | **`snowflake.enable.schematization=false`** | This is the only tested configuration. With schematization enabled, column mapping and schema evolution behavior are untested |
 | 5 | **Confluent Schema Registry**, standard wire format: magic byte `0x00` + 4-byte schema ID | A Schema Registry is **required** — Confluent's converter raises `ConfigException` without `schema.registry.url`, and this converter inherits that. If your v3 setup used `SnowflakeAvroConverterWithoutSchemaRegistry`, or a non-Confluent registry such as AWS Glue or Apicurio, **this converter does not apply**. See [confluent-compatibility.md](confluent-compatibility.md) |
-| 6 | The v3 connector did **not** set the `reader.schema` property | This converter resolves the *writer* schema by ID. Reader-side defaults and field aliasing are not reproduced, and additional resolution logic would be needed |
+| 6 | Any legacy `reader.schema` is one fixed Avro schema applied to all values handled by this converter instance | Supported in 1.1.0. The value must be an inline schema string; it is parsed at startup and uses Avro writer-to-reader resolution for every payload |
 | 7 | Applied as `value.converter` only | The key converter is untouched. `fromConnectData` delegates to a standard `AvroConverter`; this converter is sink-focused |
 | 8 | `avro.use.logical.type.converters` and `specific.avro.reader` are **not** relied upon | Both are forced to `false` internally; your values are ignored. Enabling logical type converters produces values Kafka Connector 4.1.0 rejects outright, so this is a hard requirement rather than a preference. See [confluent-compatibility.md](confluent-compatibility.md) |
 | 9 | Any SMTs you configure are safe to run **after** conversion | SMTs see the already-collapsed value |
@@ -111,7 +111,7 @@ same directory:
     snowflake-kafka-connector-4.1.0.jar
     bc-fips-*.jar
     bcpkix-fips-*.jar
-    legacy-compatible-avro-converter-1.0.0.jar    <-- add this file here
+    legacy-compatible-avro-converter-1.1.0.jar    <-- add this file here
 ```
 
 Placing it in a **separate** plugin directory will fail with `NoClassDefFoundError`, because that
@@ -137,7 +137,7 @@ does not, the JAR is in the wrong directory or the worker did not restart.
 Add the JAR into the connector's plugin directory in your image build:
 
 ```dockerfile
-COPY legacy-compatible-avro-converter-1.0.0.jar \
+COPY legacy-compatible-avro-converter-1.1.0.jar \
      /opt/kafka/plugins/snowflake-kafka-connector/
 ```
 
@@ -160,8 +160,22 @@ value.converter.basic.auth.user.info=<user>:<password>
 snowflake.enable.schematization=false
 ```
 
-All `value.converter.*` properties are passed through to the underlying Confluent deserializer, so
-TLS and authentication settings work exactly as they do with the standard converter.
+Except for the locally parsed `value.converter.reader.schema`, all `value.converter.*` properties
+are passed through to the underlying Confluent deserializer, so TLS and authentication settings
+work exactly as they do with the standard converter.
+
+If the v3 connector used a fixed reader schema, configure the same schema as a single-line JSON
+string:
+
+```properties
+value.converter.reader.schema={"type":"record","name":"Event","namespace":"com.example","fields":[{"name":"id","type":"string"},{"name":"source","type":"string","default":"legacy"}]}
+```
+
+The converter fails configuration immediately if this value is not a string or cannot be parsed as
+an Avro schema. At runtime, reader defaults, field aliases, field projection, and compatible numeric
+promotions follow the Avro library in the tested dependency matrix. A missing required reader field
+or incompatible type fails that record as a `DataException`; normal Connect error-tolerance and
+dead-letter-queue policy then applies.
 
 ### Suggested test method
 
@@ -241,7 +255,8 @@ alters no Snowflake object.
 
 If you evaluate this, the most useful things to report are:
 
-1. Whether assumptions **5** (Confluent wire format) and **6** (no `reader.schema`) held for you.
+1. Whether assumption **5** (Confluent wire format) held, and whether a fixed `reader.schema` was
+   configured.
 2. Whether your schemas use **decimal** logical types, and whether precision mattered (assumption 13).
 3. Behavior of union branches containing **nested unions**, populated **arrays/maps**, or **temporal** fields.
 4. Whether your existing downstream SQL ran unchanged against the compat table.

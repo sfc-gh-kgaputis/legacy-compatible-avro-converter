@@ -66,6 +66,12 @@ final class AvroTestSupport {
     return legacyDecoder.decode(serialize(writerSchema, datum), readerSchema);
   }
 
+  JsonNode recordContentWithReaderSchema(
+      Schema writerSchema, Schema readerSchema, Object datum) throws Exception {
+    Converter converter = compatConverterWithReaderSchema(readerSchema);
+    return recordContent(converter, serialize(writerSchema, datum));
+  }
+
   /** Passes null bytes through the Confluent AvroConverter, simulating a tombstone SinkRecord. */
   SchemaAndValue convertCurrentTombstone() {
     return confluentConverter.toConnectData(TOPIC, null);
@@ -114,6 +120,12 @@ final class AvroTestSupport {
     LegacyCompatibleAvroConverter conv = new LegacyCompatibleAvroConverter(registry);
     conv.configure(config, false);
     return conv;
+  }
+
+  Converter compatConverterWithReaderSchema(Schema readerSchema) {
+    Map<String, Object> config = new HashMap<>();
+    config.put(LegacyCompatibleAvroConverter.READER_SCHEMA_CONFIG, readerSchema.toString());
+    return compatConverterWith(config);
   }
 
   /** Applies a converter's header-aware overload and returns KC RECORD_CONTENT. */

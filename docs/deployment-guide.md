@@ -47,6 +47,9 @@ value.converter.schema.registry.url=https://your-schema-registry:8081
 value.converter.basic.auth.credentials.source=USER_INFO
 value.converter.basic.auth.user.info=<user>:<password>
 
+# Optional: one fixed Avro reader schema for all values handled by this converter instance
+# value.converter.reader.schema={"type":"record","name":"Event","namespace":"com.example","fields":[{"name":"id","type":"string"}]}
+
 # KC v4 migration and compatibility flags
 snowflake.enable.schematization=false
 snowflake.streaming.validate.compatibility.with.classic=true
@@ -87,6 +90,14 @@ are mapped to `double` so KC v4 can serialize them as JSON numbers; values requi
 than ~15 significant digits may lose precision.
 Do not set it in the connector configuration.
 
+`reader.schema` is optional. When present, it must be a string containing one complete Avro schema.
+The converter parses it during startup and applies it to every non-null value. Reader defaults,
+aliases, field projection, and compatible numeric promotion follow normal Avro schema resolution.
+Invalid configuration fails startup; incompatible writer schemas fail individual conversions as
+`DataException`s and do not fall back to writer-schema-only decoding. Use Kafka Connect's normal
+error-tolerance and dead-letter-queue settings if records with incompatible writer schemas may be
+encountered.
+
 ### Schema Registry TLS (if applicable)
 
 ```
@@ -112,6 +123,10 @@ Combinations outside this matrix are untested. Before upgrading any component, r
 full compatibility test suite and compare legacy-oracle output against compatibility-path
 output for your representative schemas.
 
+Release 1.1.0 was also verified with Kafka Connector 4.1.0 and Confluent 7.9.10 as a dependency
+override. Kafka Connector 4.2.0 and Confluent 7.10.0 were checked but are not available from the
+configured Maven repositories, so no compatibility claim is made for them.
+
 ---
 
 ## Plugin directory layout
@@ -127,7 +142,7 @@ plugin directory — that creates an isolated classloader and duplicates Conflue
     kafka-avro-serializer-7.9.2.jar              # from Confluent ZIP (existing)
     kafka-schema-registry-client-7.9.2.jar       # from Confluent ZIP (existing)
     avro-*.jar                                   # from Confluent ZIP (existing)
-    legacy-compatible-avro-converter-1.0.0.jar   # this converter (NEW)
+    legacy-compatible-avro-converter-1.1.0.jar   # this converter (NEW)
 ```
 
 ### Building the thin converter JAR
@@ -136,7 +151,7 @@ plugin directory — that creates an isolated classloader and duplicates Conflue
 mvn package -DskipTests
 ```
 
-Output: `target/legacy-compatible-avro-converter-1.0.0.jar`
+Output: `target/legacy-compatible-avro-converter-1.1.0.jar`
 
 ### Optional: plugin ZIP for distribution
 
@@ -144,7 +159,7 @@ Output: `target/legacy-compatible-avro-converter-1.0.0.jar`
 mvn package -P plugin-zip
 ```
 
-Output: `target/legacy-compatible-avro-converter-1.0.0.zip` (contains the thin
+Output: `target/legacy-compatible-avro-converter-1.1.0.zip` (contains the thin
 JAR only). Unzip it into the existing Snowflake KC plugin directory as shown above.
 
 ---
@@ -174,7 +189,7 @@ RUN cp /usr/share/confluent-hub-components/confluentinc-kafka-connect-avro-conve
        /opt/kafka/plugins/snowflake-kafka-connector/ 2>/dev/null || true
 
 # 3. Compatibility converter thin JAR
-COPY legacy-compatible-avro-converter-1.0.0.jar \
+COPY legacy-compatible-avro-converter-1.1.0.jar \
      /opt/kafka/plugins/snowflake-kafka-connector/
 ```
 
@@ -291,10 +306,9 @@ normal same-connector-name/consumer-group migration described above. The same
 - **Sink only**: the converter implements both `toConnectData` and `fromConnectData`, but
   `fromConnectData` delegates to a standard `AvroConverter` and is not independently
   tested for this use case.
-- **No `reader.schema`**: this converter resolves the writer schema by ID from the Schema
-  Registry and does not implement legacy reader-schema resolution. **Verify** that your v3
-  connector did not set the `reader.schema` property. If it did, reader-side defaults and field
-  aliasing will not be reproduced and additional writer/reader resolution logic is needed.
+- **Fixed `reader.schema` only**: version 1.1.0 supports one inline reader schema per converter
+  instance. It does not discover reader schemas by subject or select a different reader schema per
+  record.
 - **Removed v3 properties**: v4 rejects `snowflake.ingestion.method`, `buffer.flush.time`,
   `buffer.size.bytes`, `buffer.count.records`, `snowflake.streaming.max.client.lag`,
   `snowflake.streaming.channel.name.include.connector.name`, and `provider`, among others.

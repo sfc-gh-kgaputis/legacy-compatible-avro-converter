@@ -24,9 +24,10 @@ import org.junit.jupiter.api.Test;
  * {@code io.confluent.connect.avro.AvroConverter} across its configuration surface.
  *
  * <p>The design intent is that everything Confluent's converter accepts, this converter also
- * accepts, because the whole configuration map is handed to Confluent's
- * {@code KafkaAvroDeserializer}. Only the Avro-to-Connect <em>mapping</em> step is replaced. These
- * tests pin the three categories where that intent needs stating explicitly:
+ * accepts, because its configuration map is handed to Confluent's
+ * {@code KafkaAvroDeserializer}. The local {@code reader.schema} extension is parsed separately;
+ * only the Avro-to-Connect <em>mapping</em> step is replaced. These tests pin the three categories
+ * where that intent needs stating explicitly:
  *
  * <ol>
  *   <li><b>Pass-through</b> — registry lookup semantics behave as Confluent's does.

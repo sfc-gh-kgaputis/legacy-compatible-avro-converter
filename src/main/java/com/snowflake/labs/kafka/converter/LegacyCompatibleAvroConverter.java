@@ -6,7 +6,9 @@ import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.SchemaParseException;
 import org.apache.avro.generic.GenericContainer;
+import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.errors.DataException;
@@ -28,6 +30,8 @@ import org.apache.kafka.connect.storage.Converter;
  *       integers/longs, matching legacy RECORD_CONTENT behavior.
  *   <li>{@code specific.avro.reader=false} — always produce {@code GenericRecord}, not
  *       Avro-generated specific classes.
+ *   <li>{@code reader.schema} — optional fixed Avro reader schema, parsed once during
+ *       configuration and applied through Confluent's writer-to-reader resolution path.
  * </ul>
  *
  * <p>The {@code fromConnectData} direction lazily delegates to a standard {@link AvroConverter}
@@ -38,11 +42,14 @@ import org.apache.kafka.connect.storage.Converter;
  */
 public final class LegacyCompatibleAvroConverter implements Converter {
 
+    public static final String READER_SCHEMA_CONFIG = "reader.schema";
+
     // null for production path; non-null only when injected by the package-private test constructor.
     private final SchemaRegistryClient injectedRegistry;
     private KafkaAvroDeserializer deserializer;
     private AvroConverter outboundDelegate;
     private Map<String, Object> effectiveConfigs;
+    private Schema readerSchema;
     private boolean isKey;
 
     /** Production no-arg constructor. No SchemaRegistryClient is injected; the deserializer
@@ -64,8 +71,10 @@ public final class LegacyCompatibleAvroConverter implements Converter {
     @Override
     public void configure(Map<String, ?> configs, boolean isKey) {
         this.isKey = isKey;
+        this.readerSchema = parseReaderSchema(configs.get(READER_SCHEMA_CONFIG));
 
         Map<String, Object> cfg = new HashMap<>(configs);
+        cfg.remove(READER_SCHEMA_CONFIG);
         // Suppress logical type converters so temporal fields stay as raw epoch int/long.
         cfg.put("avro.use.logical.type.converters", "false");
         // Always use generic (not Avro-generated specific) records.
@@ -113,9 +122,16 @@ public final class LegacyCompatibleAvroConverter implements Converter {
             return SchemaAndValue.NULL;
         }
         try {
-            Object datum = headers != null
-                    ? deserializer.deserialize(topic, headers, value)
-                    : deserializer.deserialize(topic, value);
+            Object datum;
+            if (readerSchema == null) {
+                datum = headers != null
+                        ? deserializer.deserialize(topic, headers, value)
+                        : deserializer.deserialize(topic, value);
+            } else {
+                datum = headers != null
+                        ? deserializer.deserialize(topic, headers, value, readerSchema)
+                        : deserializer.deserialize(topic, value, readerSchema);
+            }
             if (datum == null) {
                 return SchemaAndValue.NULL;
             }
@@ -123,7 +139,32 @@ public final class LegacyCompatibleAvroConverter implements Converter {
             Object mapped = LegacyAvroValueMapper.toValue(avroSchema, datum);
             return new SchemaAndValue(null, mapped);
         } catch (Exception e) {
-            throw new DataException("Failed to deserialize Avro payload for topic " + topic, e);
+            String operation = readerSchema == null
+                    ? "deserialize Avro payload"
+                    : "resolve Avro writer schema to configured reader schema";
+            throw new DataException("Failed to " + operation + " for topic " + topic, e);
+        }
+    }
+
+    private static Schema parseReaderSchema(Object configuredValue) {
+        if (configuredValue == null) {
+            return null;
+        }
+        if (!(configuredValue instanceof String)) {
+            throw new ConfigException(
+                    READER_SCHEMA_CONFIG,
+                    configuredValue,
+                    "must be a string containing one valid Avro schema");
+        }
+        try {
+            return new Schema.Parser().parse((String) configuredValue);
+        } catch (SchemaParseException e) {
+            ConfigException error = new ConfigException(
+                    READER_SCHEMA_CONFIG,
+                    configuredValue,
+                    "must contain a valid Avro schema: " + e.getMessage());
+            error.initCause(e);
+            throw error;
         }
     }
 
