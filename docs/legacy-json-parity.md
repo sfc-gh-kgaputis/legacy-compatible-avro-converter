@@ -42,6 +42,22 @@ plain `fixed` to the original signed-byte integer array.
 Non-finite float and double values were also pinned explicitly. Avro's JSON renderer quotes them,
 so the compatibility mapper returns their string form rather than exposing a non-JSON numeric value.
 
+### Compatibility with this converter's 1.0.0 release
+
+The corrections above are enabled by default through `legacy.json.parity.enabled=true`. An existing
+1.0.0 adopter can set `value.converter.legacy.json.parity.enabled=false` to retain exactly the three
+earlier representations:
+
+| Input | Default 1.1.0 | Opt-out / 1.0.0 behavior |
+|---|---|---|
+| Plain `bytes` | ISO-8859-1 string | `byte[]` |
+| Plain `fixed` | Signed-byte integer list | `byte[]` |
+| `NaN` and infinities | String | Raw `Float`/`Double` |
+
+The opt-out intentionally does not match the original Snowflake JSON path for those inputs. It does
+not alter decimal handling, unions, logical types, reader-schema resolution, tombstones, errors, or
+outbound conversion.
+
 ## Confirmed differences
 
 ### Top-level non-record schemas

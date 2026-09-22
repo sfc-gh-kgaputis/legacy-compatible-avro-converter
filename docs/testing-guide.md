@@ -165,9 +165,10 @@ value.converter.basic.auth.user.info=<user>:<password>
 snowflake.enable.schematization=false
 ```
 
-Except for the locally parsed `value.converter.reader.schema`, all `value.converter.*` properties
-are passed through to the underlying Confluent deserializer, so TLS and authentication settings
-work exactly as they do with the standard converter.
+Except for the locally parsed `value.converter.reader.schema` and
+`value.converter.legacy.json.parity.enabled`, all `value.converter.*` properties are passed through
+to the underlying Confluent deserializer, so TLS and authentication settings work exactly as they
+do with the standard converter.
 
 If the v3 connector used a fixed reader schema, configure the same schema as a single-line JSON
 string:
@@ -181,6 +182,12 @@ an Avro schema. At runtime, reader defaults, field aliases, field projection, an
 promotions follow the Avro library in the tested dependency matrix. A missing required reader field
 or incompatible type fails that record as a `DataException`; normal Connect error-tolerance and
 dead-letter-queue policy then applies.
+
+The default `value.converter.legacy.json.parity.enabled=true` matches the original Snowflake JSON
+rendering for plain `bytes`, plain `fixed`, and non-finite numbers. Existing 1.0.0 adopters should
+test the default first. If downstream code depends on the 1.0.0 Java representations, set the flag
+to `false` during the upgrade and plan that downstream migration explicitly; no other behavior is
+changed by the opt-out.
 
 ### Suggested test method
 

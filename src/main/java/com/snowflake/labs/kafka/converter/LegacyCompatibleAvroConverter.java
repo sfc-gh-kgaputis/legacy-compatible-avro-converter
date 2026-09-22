@@ -32,6 +32,9 @@ import org.apache.kafka.connect.storage.Converter;
  *       Avro-generated specific classes.
  *   <li>{@code reader.schema} — optional fixed Avro reader schema, parsed once during
  *       configuration and applied through Confluent's writer-to-reader resolution path.
+ *   <li>{@code legacy.json.parity.enabled=true} — render plain bytes, plain fixed, and
+ *       non-finite floating-point values like the original Snowflake converter. Set to
+ *       {@code false} only to preserve this converter's published 1.0.0 representations.
  * </ul>
  *
  * <p>The {@code fromConnectData} direction lazily delegates to a standard {@link AvroConverter}
@@ -43,6 +46,7 @@ import org.apache.kafka.connect.storage.Converter;
 public final class LegacyCompatibleAvroConverter implements Converter {
 
     public static final String READER_SCHEMA_CONFIG = "reader.schema";
+    public static final String LEGACY_JSON_PARITY_ENABLED_CONFIG = "legacy.json.parity.enabled";
 
     // null for production path; non-null only when injected by the package-private test constructor.
     private final SchemaRegistryClient injectedRegistry;
@@ -50,6 +54,7 @@ public final class LegacyCompatibleAvroConverter implements Converter {
     private AvroConverter outboundDelegate;
     private Map<String, Object> effectiveConfigs;
     private Schema readerSchema;
+    private boolean legacyJsonParityEnabled;
     private boolean isKey;
 
     /** Production no-arg constructor. No SchemaRegistryClient is injected; the deserializer
@@ -72,9 +77,12 @@ public final class LegacyCompatibleAvroConverter implements Converter {
     public void configure(Map<String, ?> configs, boolean isKey) {
         this.isKey = isKey;
         this.readerSchema = parseReaderSchema(configs.get(READER_SCHEMA_CONFIG));
+        this.legacyJsonParityEnabled = parseLegacyJsonParityEnabled(
+                configs.get(LEGACY_JSON_PARITY_ENABLED_CONFIG));
 
         Map<String, Object> cfg = new HashMap<>(configs);
         cfg.remove(READER_SCHEMA_CONFIG);
+        cfg.remove(LEGACY_JSON_PARITY_ENABLED_CONFIG);
         // Suppress logical type converters so temporal fields stay as raw epoch int/long.
         cfg.put("avro.use.logical.type.converters", "false");
         // Always use generic (not Avro-generated specific) records.
@@ -136,7 +144,8 @@ public final class LegacyCompatibleAvroConverter implements Converter {
                 return SchemaAndValue.NULL;
             }
             Schema avroSchema = extractSchema(datum);
-            Object mapped = LegacyAvroValueMapper.toValue(avroSchema, datum);
+            Object mapped = LegacyAvroValueMapper.toValue(
+                    avroSchema, datum, legacyJsonParityEnabled);
             return new SchemaAndValue(null, mapped);
         } catch (Exception e) {
             String operation = readerSchema == null
@@ -166,6 +175,28 @@ public final class LegacyCompatibleAvroConverter implements Converter {
             error.initCause(e);
             throw error;
         }
+    }
+
+    private static boolean parseLegacyJsonParityEnabled(Object configuredValue) {
+        if (configuredValue == null) {
+            return true;
+        }
+        if (configuredValue instanceof Boolean) {
+            return (Boolean) configuredValue;
+        }
+        if (configuredValue instanceof String) {
+            String text = ((String) configuredValue).trim();
+            if ("true".equalsIgnoreCase(text)) {
+                return true;
+            }
+            if ("false".equalsIgnoreCase(text)) {
+                return false;
+            }
+        }
+        throw new ConfigException(
+                LEGACY_JSON_PARITY_ENABLED_CONFIG,
+                configuredValue,
+                "must be true or false");
     }
 
     /**

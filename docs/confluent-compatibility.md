@@ -3,13 +3,18 @@
 The design goal is that `LegacyCompatibleAvroConverter` is a **drop-in replacement for
 `io.confluent.connect.avro.AvroConverter`**: anything Confluent's converter accepts, this one
 accepts, because its configuration map is handed to Confluent's `KafkaAvroDeserializer`. Only the
-Avro-to-Connect *mapping* step is replaced. The one local extension is `reader.schema`, which is
-parsed before the remaining settings are forwarded.
+Avro-to-Connect *mapping* step is replaced. The local extensions are `reader.schema` and
+`legacy.json.parity.enabled`; both are parsed before the remaining settings are forwarded.
 
 Version 1.1.0 also accepts the legacy connector-specific `reader.schema` property. It is parsed by
 this converter and passed to Confluent's public reader-schema deserialization overload, so registry
 lookup, rules, migrations, caching, auth, and TLS remain in Confluent's implementation while Avro
 performs normal writer-to-reader resolution.
+
+`legacy.json.parity.enabled` defaults to `true`. Setting it to `false` restores only the three Java
+representations published by this converter's 1.0.0 release: `byte[]` for plain `bytes` and
+`fixed`, plus raw non-finite `Float`/`Double` values. The property accepts booleans and string
+`true`/`false`; other values fail configuration.
 
 This document states where that holds, where it deliberately does not, and what is out of scope.
 
@@ -82,6 +87,20 @@ that resolved schema into `LegacyAvroValueMapper`. This supports reader defaults
 projection, compatible numeric promotion, and named-type resolution as implemented by the tested
 Avro dependency. Incompatible schemas raise a topic-specific `DataException` retaining the original
 Avro failure in the cause chain. Tombstones bypass resolution.
+
+## Version 1.0.0 representation opt-out
+
+The default 1.1.0 mapper corrects three discrepancies against the original Snowflake JSON path:
+plain `bytes` are ISO-8859-1 strings, plain `fixed` values are signed-byte arrays, and non-finite
+numbers are strings. Existing 1.0.0 adopters can temporarily retain the earlier representations:
+
+```properties
+value.converter.legacy.json.parity.enabled=false
+```
+
+This switch is deliberately narrow. It does not affect decimals, temporal logical types, unions,
+reader-schema resolution, tombstones, errors, or `fromConnectData`. It is an upgrade-compatibility
+control, not the recommended fidelity mode.
 
 ### A note on subject naming strategies
 

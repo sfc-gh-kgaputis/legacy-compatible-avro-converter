@@ -39,25 +39,39 @@ public final class LegacyAvroValueMapper {
      * @return a Java Map, List, String, Number, Boolean, or null
      */
     public static Object toValue(Schema schema, Object datum) {
+        return toValue(schema, datum, true);
+    }
+
+    /**
+     * Converts an Avro datum using either the original Snowflake JSON representation or the
+     * representations published by version 1.0.0 of this converter.
+     *
+     * @param schema the Avro schema of the datum (may be null for top-level non-record datums)
+     * @param datum the Avro datum to convert
+     * @param legacyJsonParityEnabled whether to correct the three 1.0.0 representation differences
+     * @return a Java Map, List, String, Number, byte[], Boolean, or null
+     */
+    public static Object toValue(
+            Schema schema, Object datum, boolean legacyJsonParityEnabled) {
         if (datum == null) {
             return null;
         }
         if (schema == null) {
-            return inferFromContainer(datum);
+            return inferFromContainer(datum, legacyJsonParityEnabled);
         }
 
         Schema effective = resolveUnion(schema, datum);
         switch (effective.getType()) {
             case RECORD:
-                return mapRecord((GenericRecord) datum, effective);
+                return mapRecord((GenericRecord) datum, effective, legacyJsonParityEnabled);
             case ARRAY:
-                return mapArray((Collection<?>) datum, effective);
+                return mapArray((Collection<?>) datum, effective, legacyJsonParityEnabled);
             case MAP:
-                return mapMap((Map<?, ?>) datum, effective);
+                return mapMap((Map<?, ?>) datum, effective, legacyJsonParityEnabled);
             case BYTES:
-                return mapBytes(datum, effective);
+                return mapBytes(datum, effective, legacyJsonParityEnabled);
             case FIXED:
-                return mapFixed(datum, effective);
+                return mapFixed(datum, effective, legacyJsonParityEnabled);
             case STRING:
             case ENUM:
                 return datum.toString();
@@ -65,8 +79,9 @@ public final class LegacyAvroValueMapper {
             case LONG:
             case FLOAT:
             case DOUBLE:
-                if (datum instanceof Float && !Float.isFinite((Float) datum)
-                        || datum instanceof Double && !Double.isFinite((Double) datum)) {
+                if (legacyJsonParityEnabled
+                        && (datum instanceof Float && !Float.isFinite((Float) datum)
+                        || datum instanceof Double && !Double.isFinite((Double) datum))) {
                     return datum.toString();
                 }
                 return datum;
@@ -91,31 +106,37 @@ public final class LegacyAvroValueMapper {
         return schema.getTypes().get(branch);
     }
 
-    private static Map<String, Object> mapRecord(GenericRecord record, Schema schema) {
+    private static Map<String, Object> mapRecord(
+            GenericRecord record, Schema schema, boolean legacyJsonParityEnabled) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Schema.Field field : schema.getFields()) {
-            result.put(field.name(), toValue(field.schema(), record.get(field.pos())));
+            result.put(field.name(), toValue(
+                    field.schema(), record.get(field.pos()), legacyJsonParityEnabled));
         }
         return result;
     }
 
-    private static List<Object> mapArray(Collection<?> array, Schema schema) {
+    private static List<Object> mapArray(
+            Collection<?> array, Schema schema, boolean legacyJsonParityEnabled) {
         List<Object> result = new ArrayList<>();
         for (Object element : array) {
-            result.add(toValue(schema.getElementType(), element));
+            result.add(toValue(schema.getElementType(), element, legacyJsonParityEnabled));
         }
         return result;
     }
 
-    private static Map<String, Object> mapMap(Map<?, ?> avroMap, Schema schema) {
+    private static Map<String, Object> mapMap(
+            Map<?, ?> avroMap, Schema schema, boolean legacyJsonParityEnabled) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : avroMap.entrySet()) {
-            result.put(entry.getKey().toString(), toValue(schema.getValueType(), entry.getValue()));
+            result.put(entry.getKey().toString(), toValue(
+                    schema.getValueType(), entry.getValue(), legacyJsonParityEnabled));
         }
         return result;
     }
 
-    private static Object mapBytes(Object datum, Schema schema) {
+    private static Object mapBytes(
+            Object datum, Schema schema, boolean legacyJsonParityEnabled) {
         LogicalType logicalType = schema.getLogicalType();
         if (logicalType instanceof LogicalTypes.Decimal) {
             LogicalTypes.Decimal decimal = (LogicalTypes.Decimal) logicalType;
@@ -136,13 +157,19 @@ public final class LegacyAvroValueMapper {
         }
         if (datum instanceof ByteBuffer) {
             ByteBuffer buf = ((ByteBuffer) datum).duplicate();
+            if (!legacyJsonParityEnabled) {
+                byte[] bytes = new byte[buf.remaining()];
+                buf.get(bytes);
+                return bytes;
+            }
             // GenericData.toString renders plain bytes as an escaped ISO-8859-1 JSON string.
             return StandardCharsets.ISO_8859_1.decode(buf).toString();
         }
         return datum;
     }
 
-    private static Object mapFixed(Object datum, Schema schema) {
+    private static Object mapFixed(
+            Object datum, Schema schema, boolean legacyJsonParityEnabled) {
         LogicalType logicalType = schema.getLogicalType();
         if (logicalType instanceof LogicalTypes.Decimal) {
             LogicalTypes.Decimal decimal = (LogicalTypes.Decimal) logicalType;
@@ -151,6 +178,9 @@ public final class LegacyAvroValueMapper {
             return new BigDecimal(new BigInteger(bytes), decimal.getScale()).doubleValue();
         }
         if (datum instanceof GenericData.Fixed) {
+            if (!legacyJsonParityEnabled) {
+                return ((GenericData.Fixed) datum).bytes();
+            }
             // GenericData.Fixed.toString renders Arrays.toString(byte[]), a signed integer array.
             List<Integer> bytes = new ArrayList<>();
             for (byte value : ((GenericData.Fixed) datum).bytes()) {
@@ -165,25 +195,27 @@ public final class LegacyAvroValueMapper {
      * Fallback when the schema is unavailable; infers the mapping from the runtime Java type.
      * Works for top-level non-record datums that implement GenericContainer.
      */
-    private static Object inferFromContainer(Object datum) {
+    private static Object inferFromContainer(Object datum, boolean legacyJsonParityEnabled) {
         if (datum instanceof GenericRecord) {
             GenericRecord record = (GenericRecord) datum;
-            return mapRecord(record, record.getSchema());
+            return mapRecord(record, record.getSchema(), legacyJsonParityEnabled);
         }
         if (datum instanceof GenericContainer) {
-            return toValue(((GenericContainer) datum).getSchema(), datum);
+            return toValue(
+                    ((GenericContainer) datum).getSchema(), datum, legacyJsonParityEnabled);
         }
         if (datum instanceof Collection) {
             List<Object> result = new ArrayList<>();
             for (Object e : (Collection<?>) datum) {
-                result.add(inferFromContainer(e));
+                result.add(inferFromContainer(e, legacyJsonParityEnabled));
             }
             return result;
         }
         if (datum instanceof Map) {
             Map<String, Object> result = new LinkedHashMap<>();
             for (Map.Entry<?, ?> e : ((Map<?, ?>) datum).entrySet()) {
-                result.put(e.getKey().toString(), inferFromContainer(e.getValue()));
+                result.put(e.getKey().toString(), inferFromContainer(
+                        e.getValue(), legacyJsonParityEnabled));
             }
             return result;
         }

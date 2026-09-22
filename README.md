@@ -53,6 +53,19 @@ An incompatible payload fails as `DataException`; the converter never falls back
 decoding. The setting is fixed per converter instance, not selected per record or Schema Registry
 subject.
 
+Version 1.1.0 corrects three output differences found in 1.0.0: plain Avro `bytes`, plain Avro
+`fixed`, and non-finite float/double values now match the original Snowflake converter's JSON.
+That corrected behavior is enabled by default. If an existing 1.0.0 deployment depends on the
+published 1.0.0 Java representations, use this scoped upgrade escape hatch:
+
+```properties
+value.converter.legacy.json.parity.enabled=false
+```
+
+Disabling the flag restores `byte[]` for plain `bytes`/`fixed` and raw `Float`/`Double` objects for
+`NaN` and infinities. It does not disable reader-schema support or change unions, logical types,
+tombstones, errors, or outbound serialization. New deployments should keep the default `true`.
+
 ### Scope
 
 This is a **drop-in replacement for `io.confluent.connect.avro.AvroConverter`**. It assumes you can
@@ -194,6 +207,8 @@ coordinates and are not claimed as tested.
   as topic-specific `DataException`s with the Avro failure retained as the cause.
 - Reproduces legacy JSON rendering for plain `bytes`, plain `fixed`, and non-finite floating-point
   values, backed by a wide differential corpus.
+- Adds `legacy.json.parity.enabled=false` as a scoped opt-out for existing 1.0.0 adopters that need
+  the three published 1.0.0 representations during an upgrade.
 - Keeps tombstones, outbound serialization, legacy union collapse, and logical-type representation
   unchanged.
 

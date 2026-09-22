@@ -53,6 +53,9 @@ value.converter.basic.auth.user.info=<user>:<password>
 # Optional: one fixed Avro reader schema for all values handled by this converter instance
 # value.converter.reader.schema={"type":"record","name":"Event","namespace":"com.example","fields":[{"name":"id","type":"string"}]}
 
+# Optional only for existing 1.0.0 adopters: retain the three 1.0.0 mapper representations
+# value.converter.legacy.json.parity.enabled=false
+
 # KC v4 migration and compatibility flags
 snowflake.enable.schematization=false
 snowflake.streaming.validate.compatibility.with.classic=true
@@ -100,6 +103,11 @@ Invalid configuration fails startup; incompatible writer schemas fail individual
 `DataException`s and do not fall back to writer-schema-only decoding. Use Kafka Connect's normal
 error-tolerance and dead-letter-queue settings if records with incompatible writer schemas may be
 encountered.
+
+`legacy.json.parity.enabled` defaults to `true`, which matches the original Snowflake converter's
+JSON for plain `bytes`, plain `fixed`, and non-finite numbers. Set it to `false` only if an existing
+1.0.0 deployment depends on that release's `byte[]` binary fields or raw non-finite numeric objects.
+The opt-out does not change any other conversion behavior.
 
 ### Schema Registry TLS (if applicable)
 

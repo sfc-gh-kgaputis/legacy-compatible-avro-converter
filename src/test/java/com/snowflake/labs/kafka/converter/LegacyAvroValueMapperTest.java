@@ -153,6 +153,15 @@ class LegacyAvroValueMapperTest {
   }
 
   @Test
+  void disabledLegacyJsonParityReturnsVersion100Bytes() {
+    Schema schema = Schema.create(Schema.Type.BYTES);
+    byte[] bytes = {1, 2, 3, 4, (byte) 0xFF};
+    Object result = LegacyAvroValueMapper.toValue(schema, ByteBuffer.wrap(bytes), false);
+    assertInstanceOf(byte[].class, result);
+    assertArrayEquals(bytes, (byte[]) result);
+  }
+
+  @Test
   void decimalFixedReturnsDouble() {
     Schema schema = LogicalTypes.decimal(4, 2).addToSchema(Schema.createFixed("D", null, null, 2));
     BigDecimal expected = new BigDecimal("9.99");
@@ -171,12 +180,59 @@ class LegacyAvroValueMapperTest {
   }
 
   @Test
+  void disabledLegacyJsonParityReturnsVersion100FixedBytes() {
+    Schema schema = Schema.createFixed("F100", null, null, 4);
+    byte[] raw = {10, 20, -30, -1};
+    Object result = LegacyAvroValueMapper.toValue(
+        schema, new GenericData.Fixed(schema, raw), false);
+    assertInstanceOf(byte[].class, result);
+    assertArrayEquals(raw, (byte[]) result);
+  }
+
+  @Test
   void nonFiniteFloatAndDoubleRenderAsLegacyJsonStrings() {
     assertEquals("NaN", LegacyAvroValueMapper.toValue(Schema.create(Schema.Type.FLOAT), Float.NaN));
     assertEquals("Infinity",
         LegacyAvroValueMapper.toValue(Schema.create(Schema.Type.DOUBLE), Double.POSITIVE_INFINITY));
     assertEquals("-Infinity",
         LegacyAvroValueMapper.toValue(Schema.create(Schema.Type.DOUBLE), Double.NEGATIVE_INFINITY));
+  }
+
+  @Test
+  void disabledLegacyJsonParityReturnsVersion100NonFiniteNumbers() {
+    Object floatValue = LegacyAvroValueMapper.toValue(
+        Schema.create(Schema.Type.FLOAT), Float.NaN, false);
+    Object doubleValue = LegacyAvroValueMapper.toValue(
+        Schema.create(Schema.Type.DOUBLE), Double.POSITIVE_INFINITY, false);
+
+    assertInstanceOf(Float.class, floatValue);
+    assertEquals(Float.NaN, floatValue);
+    assertInstanceOf(Double.class, doubleValue);
+    assertEquals(Double.POSITIVE_INFINITY, doubleValue);
+  }
+
+  @Test
+  void disabledLegacyJsonParityIsAppliedRecursivelyWithoutChangingDecimals() {
+    Schema bytes = Schema.create(Schema.Type.BYTES);
+    Schema decimal = LogicalTypes.decimal(8, 2).addToSchema(Schema.create(Schema.Type.BYTES));
+    Schema schema = new Schema.Parser().parse(
+        "{\"type\":\"record\",\"name\":\"Version100Nested\",\"fields\":["
+            + "{\"name\":\"values\",\"type\":{\"type\":\"array\",\"items\":\"bytes\"}},"
+            + "{\"name\":\"metric\",\"type\":\"double\"}]}" );
+    GenericRecord record = new GenericData.Record(schema);
+    record.put("values", List.of(ByteBuffer.wrap(new byte[] {1, -1})));
+    record.put("metric", Double.NEGATIVE_INFINITY);
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> result = (Map<String, Object>) LegacyAvroValueMapper.toValue(
+        schema, record, false);
+    assertArrayEquals(new byte[] {1, -1}, (byte[]) ((List<?>) result.get("values")).get(0));
+    assertEquals(Double.NEGATIVE_INFINITY, result.get("metric"));
+
+    BigDecimal expected = new BigDecimal("12.34");
+    Object decimalResult = LegacyAvroValueMapper.toValue(
+        decimal, ByteBuffer.wrap(expected.unscaledValue().toByteArray()), false);
+    assertEquals(expected.doubleValue(), decimalResult);
   }
 
   // ------------------------------------------------------------------
